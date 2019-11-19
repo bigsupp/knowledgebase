@@ -3,13 +3,23 @@ const router = express.Router()
 
 const Report = require('../../../controllers/Report')
 const authen = require('../../../middlewares/Authentication.js')
+const decode = require('../../../libs/Decode')
 
 router.get('/', authen.admin, (req, res, next) => {
-	const query = null
+	const query = req.query
+	const { limit, skip } = query || null
 
-	Report.list(query)
+	Report.list(Number(skip), Number(limit))
 		.then(doc => {
 			res.json(doc);
+		})
+		.catch(next)
+})
+
+router.get('/count', authen.admin, (req, res, next) => {
+	Report.count()
+		.then(doc => {;
+			res.json(doc[0]);
 		})
 		.catch(next)
 })
@@ -24,8 +34,10 @@ router.get('/:_id', authen.admin, (req, res, next) => {
 		.catch(next)
 })
 
-router.post('/', authen.user, (req, res, next) => {
+router.post('/:postID', authen.user, (req, res, next) => {
 	const props = req.body
+	props.reportedBy = decode(req)._id
+	props.postID = req.params.postID
 
 	Report.add(props)
 		.then(doc => {

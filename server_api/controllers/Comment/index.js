@@ -11,13 +11,17 @@ exports.add = add = (props) => {
 	return comment.save()
 }
 
-exports.list = list = (query) => {
-	return Comments.find(query)
-		// .populate('postID')
-		// .populate('createdBy')
+exports.list = list = (query, skip, limit) => {
+	return Comments.find(query, null, { limit, skip })
+		.sort({date: 'asc'})
+		.populate('createdBy', 'username')
 		.exec()
 }
 
 exports.del = del = (query, update) => {
 	return Comments.findOneAndUpdate(query, { $set: update }, { new: true })
+}
+
+exports.count = count = (query) => {
+	return Comments.countDocuments(query);
 }

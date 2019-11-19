@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const moment = require('moment');
 const multer = require('multer')
+require('dotenv').config()
 
 const Post = require('../../../controllers/Post')
 const Like = require('../../../controllers/Like')
@@ -9,11 +10,11 @@ const File = require('../../../controllers/File')
 const User = require('../../../controllers/User')
 const Comment = require('../../../controllers/Comment')
 const authen = require('../../../middlewares/Authentication')
-const getUsername = require('../../../libs/GetUsername')
+const decode = require('../../../libs/Decode')
 
 const storage = multer.diskStorage({
 	destination: function (req, file, cb) {
-		cb(null, 'D:/2562_1/knowledgebase/uploads')
+		cb(null, process.env.uploadFolder)
 	},
 	filename: function (req, file, cb) {
 		cb(null, file.originalname + '-' + moment().format('YYYYMMDDHHmmSS'))
@@ -24,16 +25,124 @@ const upload = multer({
 	storage: storage
 })
 
-router.get('/', (req, res, next) => {
-	const query = {
-		deleted: 0
+const getCreatedBy = (queryUser) => {
+	if (queryUser) {
+		const username = {
+			username: {
+				$regex: new RegExp(queryUser),
+				$options: 'i'
+			}
+		}
+		return User.list(username)
+			.then(doc => {
+				if (doc.length > 0) {
+					return doc[0]._id
+				} else {
+					return null
+				}
+			})
 	}
+};
 
-	Post.list(query)
-		.then(doc => {
-			res.json(doc);
+router.get('/', (req, res, next) => {
+	const query = req.query
+	const date = {}
+
+	Promise.all([getCreatedBy(query.fromUser)])
+		.then((vals) => {
+			if (vals[0]) {
+				query.createdBy = vals[0]
+				delete query.fromUser
+			} else if (!vals[0] & query.fromUser) {
+				return next()
+			}
+
+			if (query.title) {
+				query.title = {
+					$regex: new RegExp(query.title),
+					$options: 'i'
+				}
+			}
+
+			if (query.fromDate) {
+				date.$gte = new Date(query.fromDate)
+				delete query.fromDate
+			}
+
+			if (query.toDate) {
+				const toDate = new Date(query.toDate)
+				date.$lt = toDate.setDate(toDate.getDate() + 1)
+				delete query.toDate
+			}
+
+			const {
+				limit,
+				skip
+			} = query || null
+
+			if (date.length > 0) {
+				query.date = date
+			}
+
+			query.deleted = 0
+
+			delete query.limit
+			delete query.skip
+
+			Post.list(query, Number(skip), Number(limit))
+				.then(doc => {
+					res.json(doc);
+				})
+				.catch(next)
+		});
+})
+
+router.get('/count', (req, res, next) => {
+	const query = req.query
+	const date = {}
+
+	Promise.all([getCreatedBy(query.fromUser)])
+		.then((vals) => {
+			if (vals[0]) {
+				query.createdBy = vals[0]
+				delete query.fromUser
+			} else if (!vals[0] & query.fromUser)  {
+				return next()
+			}
+
+			if (query.title) {
+				query.title = {
+					$regex: new RegExp(query.title),
+					$options: 'i'
+				}
+			}
+
+			if (query.fromDate) {
+				date.$gte = new Date(query.fromDate)
+				delete query.fromDate
+			}
+
+			if (query.toDate) {
+				const toDate = new Date(query.toDate)
+				date.$lt = toDate.setDate(toDate.getDate() + 1)
+				delete query.toDate
+			}
+
+			if (date.length > 0) {
+				query.date = date
+			}
+
+			query.deleted = 0
+
+			delete query.limit
+			delete query.skip
+
+	Post.count(query)
+		.then(num => {
+			res.json(num);
 		})
 		.catch(next)
+	})
 })
 
 router.get('/:_id', (req, res, next) => {
@@ -48,14 +157,9 @@ router.get('/:_id', (req, res, next) => {
 
 router.post('/', authen.user, (req, res, next) => {
 	const props = req.body
-	const username = getUsername(req)
+	props.createdBy = decode(req)._id
 
-	User.get_id(username)
-		.then(doc => {
-			props.createdBy = doc._id
-
-			return Post.add(props)
-		})
+	Post.add(props)
 		.then(doc => {
 			res.json(doc)
 		})
@@ -84,6 +188,7 @@ router.patch('/:_id', authen.user, (req, res, next) => {
 
 	Post.update(query, update)
 		.then(doc => {
+			console.log(doc);
 			res.json(doc);
 		})
 		.catch(next)
@@ -112,10 +217,32 @@ router.delete('/:_id', authen.user, (req, res, next) => {
 router.get('/:postID/comments', (req, res, next) => {
 	const query = req.params
 	query.deleted = 0
+	const {
+		limit,
+		skip
+	} = req.query || null
 
-	Comment.list(query)
-		// .populate('postID')
-		// .populate('createdBy')
+	Comment.list(query, Number(skip), Number(limit))
+		.then(doc => {
+			res.json(doc);
+		})
+		.catch(next)
+})
+
+router.get('/:postID/comments/count', (req, res, next) => {
+	const query = req.params
+	query.deleted = 0
+
+	Comment.count(query)
+		.then(doc => {
+			res.json(doc);
+		})
+		.catch(next)
+})
+
+router.get('/:postID/likes/count', (req, res, next) => {
+	const query = req.params
+	Like.count(query)
 		.then(doc => {
 			res.json(doc);
 		})
@@ -126,8 +253,6 @@ router.get('/:postID/likes', (req, res, next) => {
 	const query = req.params
 
 	Like.list(query)
-		// .populate('commentID')
-		// .populate('likedBy')
 		.then(doc => {
 			res.json(doc);
 		})
@@ -166,13 +291,37 @@ router.patch('/:_id/file', authen.user, upload.single('file'), (req, res, next) 
 		.catch(next)
 })
 
-router.delete('/:_id/file', authen.user, (req, res, next) => {
-	const post_id = req.params
-	const fileID = req.body.fileID
+router.delete('/:_id/file/:fileID', authen.user, (req, res, next) => {
+	const postID = req.params._id
+	const fileID = req.params.fileID
 
-	File.delandUpdate(fileID, post_id)
+	const fileDel = File.delandUpdate(fileID, postID)
+	const postUpdate = Post.update({
+		_id: postID
+	}, {
+		$pull: {
+			fileID: fileID
+		},
+		new: true
+	})
+
+	Promise.all([fileDel, postUpdate])
 		.then(doc => {
 			res.json(doc);
+		})
+		.catch(next)
+})
+
+router.get('/:postID/checkuser', (req, res, next) => {
+	const likedBy = decode(req)._id
+	const postID = req.params.postID
+
+	Like.checkLike({
+			postID,
+			likedBy
+		})
+		.then(doc => {
+			res.json(doc)
 		})
 		.catch(next)
 })

@@ -19,9 +19,6 @@ router.post('/', (req, res, next) => {
 				throw err
 			}
 
-			// console.log("username: ", username);
-			// console.log(doc);
-
 			bcrypt.compare(password, doc.password)
 				.then(result => {
 					if (!result) {
@@ -29,17 +26,19 @@ router.post('/', (req, res, next) => {
 						err.statusCode = 400;
 						throw err
 					}
+
 					const token = jwt.sign({
 						username: username,
-						role: doc.role
-					}, secret, {
+						role: doc.role,
+						_id: doc._id
+					}, process.env.secret, {
 						algorithm: 'HS512'
 					})
 
-					res.cookie('jwt', token, {
-						maxAge: 1000 * 60 * 30
+					res.cookie('jwt', token)
+					res.status(200).json({
+						token
 					})
-					res.status(200).end('token: ' + token)
 				})
 				.catch(next)
 		})

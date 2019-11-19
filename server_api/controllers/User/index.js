@@ -26,6 +26,6 @@ exports.del = del = (query, update) => {
 }
 
 exports.get_id = get_id = (username) => {
-    const query = { username: username }
+    const query = { username }
     return Users.findOne(query, '_id').exec()
 }

@@ -5,11 +5,27 @@ const moment = require('moment')
 const Comment = require('../../../controllers/Comment')
 const Like = require('../../../controllers/Like')
 const authen = require('../../../middlewares/Authentication.js')
+const decode = require('../../../libs/Decode')
+
+// const debug = require('debug')
+// const logger = debug('route:api:comment')
 
 router.get('/', authen.admin, (req, res, next) => {
 	const query = { deleted: 0 }
+	const { limit, skip } = req.query || null
 
-	Comment.list(query)
+	Comment.list(query, Number(skip), Number(limit))
+		.then(doc => {
+			res.json(doc);
+		})
+		.catch(next)
+})
+
+router.get('/count', (req, res, next) => {
+	const query = req.query
+	query.deleted = 0
+
+	Comment.count(query)
 		.then(doc => {
 			res.json(doc);
 		})
@@ -28,6 +44,7 @@ router.get('/:_id', authen.admin, (req, res, next) => {
 
 router.post('/', authen.user, (req, res, next) => {
 	const props = req.body
+	props.createdBy = decode(req)._id
 
 	Comment.add(props)
 		.then(doc => {
@@ -38,10 +55,9 @@ router.post('/', authen.user, (req, res, next) => {
 
 router.get('/:commentID/likes', (req, res, next) => {
 	const query = req.params
+	query.deleted = 0
 
 	Like.list(query)
-		// .populate('commentID')
-		// .populate('likedBy')
 		.then(doc => {
 			res.json(doc);
 		})
@@ -55,6 +71,19 @@ router.delete('/:_id', authen.user, (req, res, next) => {
 	Comment.del(query, update)
 		.then(doc => {		
 			res.json(doc);
+		})
+		.catch(next)
+})
+
+// logger('/:commentID/checkuser')
+// logger('/:commentID/checkuser response Like.checkLike({ commentID, likedBy }) json')
+router.get('/:commentID/checkuser', (req, res, next) => {
+	const likedBy = decode(req)
+	const commentID = req.params.commentID
+
+	Like.checkLike({ commentID, likedBy })
+		.then(doc => {
+			res.json(doc)
 		})
 		.catch(next)
 })
